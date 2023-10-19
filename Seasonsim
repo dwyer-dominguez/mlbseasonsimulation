@@ -1,0 +1,96 @@
+##Example Project I've worked on in the past. Simulating seasons to determine odds of game 163 (back when applicable)
+
+
+
+
+library(Lahman)
+library(dplyr)
+library(tidyverse)
+library(stats)
+
+## Taking data from 2013-2019 & 2021 season (Using season data previous to 2013 is possible; however, I chose to keep data within current rules and divisions)
+TeamStandings <- read.csv("C:/Users/baseb/Desktop/Teamstandings.csv")
+### Lahman database does not include 2021 data. I used TeamStandings <- Teams %>% filter(yearID >= 2013) and then added 2021 data.
+
+## finding avg wins and std within a division ranking (e.g. AL East winner average = 94 wins). 
+Avg_Results <- group_by(TeamStandings,divID,lgID,Rank) %>% summarise(avgwins = mean(W),std = (sd(W)))
+datalist = list()
+yearlist<- list()
+ties = list()
+simulated_df<- data.frame()
+finaldata <- data.frame()
+##Running 100000 simulated seasons using data 
+x <-100000
+j<-1
+for(j in 1:30){
+    simulated_df<-data.frame(rnorm(x,Avg_Results$avgwins[j],Avg_Results$std[j]))
+    simulated_df$j <- j
+    datalist[[j]] <- simulated_df
+  }
+finaldata <- bind_rows(datalist)
+finaldata <- round(finaldata,0)
+names(finaldata)[1] <- 'Wins'
+finaldata$season <- (1:x)
+##Adding back division grouping. Will help with calculations
+ALC <- finaldata %>% filter(j %in% (1:5))
+ALC$divID <- "C"
+NLC <- finaldata %>% filter(j %in% (6:10))
+NLC$divID <- "C"
+ALE <- finaldata %>% filter(j %in% (11:15))
+ALE$divID <- "E"
+NLE <- finaldata %>% filter(j %in% (16:20))
+NLE$divID <- "E"
+ALW <- finaldata %>% filter(j %in% (21:25))
+ALW$divID <- "W"
+NLW <- finaldata %>% filter(j %in% (26:30))
+NLW$divID <- "W"
+AL <- rbind(ALC,ALW,ALE)
+AL$lgID <- "AL"
+NL<-rbind(NLC,NLW,NLE)
+NL$lgID <- "NL"
+finaldata <- rbind(AL,NL)
+t <-1
+k<-1
+##Loop that takes the year if any 1 & 2 rank teams tie within division. Used positioning on list to help with loop
+for (k in 1:x){
+  if (finaldata$Wins[k]== finaldata$Wins[k+(x)]||finaldata$Wins[k+(x*5)]== finaldata$Wins[k+(x*6)]||finaldata$Wins[k+(x*10)]== finaldata$Wins[k+(x*11)]||finaldata$Wins[k+(x*15)]== finaldata$Wins[k+(x*16)]||finaldata$Wins[k+(x*20)]== finaldata$Wins[k+(x*21)]||finaldata$Wins[k+(x*25)]== finaldata$Wins[k+(x*26)]){
+    ties[[t]]<- k
+    t <- t +1
+  }
+}
+##Disregard seasons with more than 1 tie
+ties<- na.omit(unique(ties))
+##Filtering Teams that are in 2nd ,3rd, & 4th place of divisions. These teams qualify for wild card hunt. Also arranging by just league and wins now, division doesn't matter
+wildcard <- finaldata %>% filter(j %in% c(2,3,4,7,8,9,12,13,14,16,17,18,22,23,24,27,28,29)) %>% 
+  arrange(season,lgID,-Wins)
+q <-1
+z<-1
+wildcardties <- list()
+
+##Loop finding ties for 2nd & 3rd best teams in each league out of teams left (AKA tie for 2nd wild card. While 3 way tie possible don't need to calculate)
+for(k in 1:x){
+  if (wildcard$Wins[z+1]==wildcard$Wins[z+2]||wildcard$Wins[z+10]==wildcard$Wins[z+11]){
+    wildcardties[[q]]<- k
+    q <- q+1 }
+z<- z+18
+}
+##putting list of division tie years with wild card ties. Removing duplicate years since all we need is at least 1 game 163 for the season
+list1<- unique(unlist(merge(wildcardties,ties)))
+totalties <- length(list1)
+
+## calculating probability using counted seasons with a tie observed / total seasons (100k)
+proboftie <- function(num){
+  num/x
+}    
+oddsoftie<- function(num){
+  1/(num/(1-num))
+}
+
+# Conclusion
+# The probability we capture is ~32.5%-33%. Although this number seems high (Actual number of game 163s since 1946 ),
+# there has been 3 game 163s since 2012 when 2nd wild card was added: 30%
+
+prob<-proboftie(totalties)
+odds<-round((oddsoftie(prob)),3)
+
+print(paste0("The probability observed is ",prob," and the odds ratio is 1:", odds))
